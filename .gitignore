@@ -1,0 +1,11 @@
+# 設計筆記 / 企畫書，不發佈到網站上
+plan/
+
+# Dependencies
+node_modules/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
