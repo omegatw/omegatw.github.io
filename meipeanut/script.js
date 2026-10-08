@@ -4,6 +4,8 @@ const status = document.querySelector('#form-status');
 const menu = document.querySelector('.menu-toggle');
 const nav = document.querySelector('#site-nav');
 const submit = form.querySelector('.form-submit');
+form.after(status);
+status.setAttribute('tabindex', '-1');
 let mode = 'order';
 let sending = false;
 let sent = false;
@@ -54,6 +56,10 @@ function resetVerification() {
 function setMode(nextMode) {
   if (sending) return;
   sent = false;
+  form.style.display = '';
+  dialog.querySelector('.dialog-tabs').style.display = '';
+  dialog.querySelector('.dialog-intro').hidden = false;
+  dialog.querySelector('#dialog-title').textContent = '寫一封小小的訊息';
   submit.disabled = !verificationToken;
   mode = nextMode;
   dialog.querySelectorAll('.dialog-tab').forEach((tab) => {
@@ -137,8 +143,16 @@ form.addEventListener('submit', async (event) => {
     const result = await response.json();
     if (!response.ok || result.accepted !== true) throw new Error(result.error || '送出失敗，請直接聯絡店家確認。');
     sent = true;
-    status.textContent = '需求已交由郵件服務寄送給陳女士，仍需店家回覆確認，尚非正式成立的訂單或預約。';
+    form.style.display = 'none';
+    dialog.querySelector('.dialog-tabs').style.display = 'none';
+    dialog.querySelector('.dialog-intro').hidden = true;
+    dialog.querySelector('#dialog-title').textContent = '需求已成功送出';
+    const emailNotice = !payload.email ? '' : result.customerEmailSent === true
+      ? '收件通知也已交由郵件服務寄送至您的 Email，請查看收件匣或垃圾郵件。'
+      : '您的 Email 通知未能確認寄出，但店家通知已送出，請勿重複提交。';
+    status.textContent = `需求已交由郵件服務寄送給陳女士，請勿重複提交。${emailNotice}仍需店家回覆確認，尚非正式成立的訂單或預約。`;
     form.reset();
+    status.focus();
   } catch (error) {
     status.textContent = error instanceof TypeError || error.name === 'TimeoutError' || error instanceof SyntaxError
       ? '無法確認寄送結果，請勿立即重送；請電話或 Email 聯絡店家確認。'

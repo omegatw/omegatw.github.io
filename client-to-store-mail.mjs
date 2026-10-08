@@ -107,7 +107,28 @@ export default {
           '此訊息為需求詢問，尚非已確認訂單或預約。',
         ].join('\n'),
       });
-      return respond({ accepted: true });
+      let customerEmailSent = false;
+      if (data.email) {
+        try {
+          await env.EMAIL.send({
+            from: { email: site.sender, name: '溪美手作｜收件通知' },
+            to: data.email,
+            replyTo: site.recipient,
+            subject: ordering ? '溪美手作｜已收到您的花生糖訂購需求' : '溪美手作｜已收到您的占卜預約需求',
+            text: [
+              '您的網站需求已交由郵件服務通知陳女士，請勿重複提交。', '',
+              '此信僅為收件通知，尚非正式成立的訂單或預約。',
+              '實際數量、運費、金額或預約時段，仍需店家與您聯繫確認。', '',
+              '如需確認進度，請回覆此信或致電陳女士：0909-570-015。',
+              '若您未提交需求，請忽略此信；您的 Email 可能由他人誤填。',
+            ].join('\n'),
+          });
+          customerEmailSent = true;
+        } catch {
+          customerEmailSent = false;
+        }
+      }
+      return respond({ accepted: true, customerEmailSent });
     } catch {
       return respond({ error: '暫時無法確認寄送結果，請勿立即重送；請直接聯絡店家確認。' }, 502);
     }
