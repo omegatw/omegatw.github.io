@@ -149,7 +149,7 @@ form.addEventListener('submit', async (event) => {
     dialog.querySelector('.dialog-intro').hidden = true;
     dialog.querySelector('#dialog-title').textContent = '信件已送出';
     const emailNotice = !payload.email ? '' : result.customerEmailSent === true
-      ? '收件通知已交由郵件服務寄送至您的 Email，寄件地址為 no-reply@omegaai.cc。若未收到，請檢查「垃圾郵件」資料夾。'
+      ? '收件通知已交由郵件服務寄送至您的 Email，寄件地址為 no-reply@omegaai.cc。若未收到，請檢查「垃圾郵件」資料夾；若確認是您本次提交的收件通知，請將信件標記為「非垃圾郵件」，以利後續收信。'
       : '您的 Email 通知未能確認寄出，但店家通知已送出，請勿重複提交。';
     status.textContent = `需求已交由郵件服務寄送給陳女士，請勿重複提交。${emailNotice}仍需店家回覆確認，尚非正式成立的訂單或預約。`;
     form.reset();
