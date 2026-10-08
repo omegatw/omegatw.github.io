@@ -77,5 +77,5 @@ form.addEventListener('submit', (event) => {
     '此訊息為需求詢問，尚待店家回覆確認。',
   ].join('\n');
   status.textContent = '已開啟電子郵件程式，請在郵件程式中確認並按「寄出」。若沒有開啟，請直接聯繫下方電話或 LINE。';
-  window.location.href = `mailto:contact@ximeipeanutcandy.tw?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = `mailto:chen0909570015@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 });
