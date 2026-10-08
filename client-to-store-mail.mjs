@@ -5,7 +5,7 @@ const sites = {
     action: 'meipeanut_contact',
     secret: 'TURNSTILE_SECRET_MEIPEANUT',
     recipient: 'chen0909570015@gmail.com',
-    sender: 'orders@omegaai.cc',
+    sender: 'no-reply@omegaai.cc',
   },
 };
 
@@ -76,9 +76,14 @@ export default {
     const ip = request.headers.get('CF-Connecting-IP');
     if (!ip) return respond({ error: '無法驗證連線來源。' }, 403);
 
+    const requestId = crypto.randomUUID();
+    const version = 'mail-diagnostics-20261009';
+    let stage = 'ip-limit';
     try {
+      console.log('Contact processing started', { requestId, version, site: data.site });
       const ipLimit = await env.MAIL_IP_LIMITER.limit({ key: `${data.site}:${ip}` });
       if (!ipLimit.success) return respond({ error: '送出過於頻繁，請稍候一分鐘。' }, 429);
+      stage = 'turnstile';
       const verification = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -88,13 +93,16 @@ export default {
       if (!verification.ok) throw new Error('Verification unavailable');
       const result = await verification.json();
       if (!result.success || result.hostname !== site.hostname || result.action !== site.action) return respond({ error: '安全驗證失敗或已過期，請重新驗證。' }, 403);
+      stage = 'site-limit';
       const siteLimit = await env.MAIL_SITE_LIMITER.limit({ key: data.site });
       if (!siteLimit.success) return respond({ error: '目前詢問較多，請稍候一分鐘。' }, 429);
       const ordering = data.mode === 'order';
       const details = ordering
         ? `預計訂購：${data.quantity} 袋（每袋 NT$200，運費與實際金額由店家確認）`
         : `希望預約日期：${data.date || '尚未指定'}（時段與費用由店家確認）`;
-      await env.EMAIL.send({
+      stage = 'store-email';
+      console.log('Store email sending', { requestId, version, recipient: site.recipient, sender: site.sender });
+      const storeResult = await env.EMAIL.send({
         from: { email: site.sender, name: '溪美手作｜網站通知' },
         to: site.recipient,
         ...(data.email ? { replyTo: data.email } : {}),
@@ -107,30 +115,64 @@ export default {
           '此訊息為需求詢問，尚非已確認訂單或預約。',
         ].join('\n'),
       });
+      const storeMessageId = storeResult?.messageId ?? null;
+      console.log('Store email accepted', {
+        requestId, version, recipient: site.recipient, messageId: storeMessageId,
+      });
       let customerEmailSent = false;
+      let customerMessageId = null;
+
       if (data.email) {
         try {
-          await env.EMAIL.send({
-            from: { email: site.sender, name: '溪美手作｜收件通知' },
+          console.log('Customer email sending', { requestId, version });
+          const customerResult = await env.EMAIL.send({
+            from: {
+              email: site.sender,
+              name: '溪美手作｜收件通知',
+            },
             to: data.email,
             replyTo: site.recipient,
-            subject: ordering ? '溪美手作｜已收到您的花生糖訂購需求' : '溪美手作｜已收到您的占卜預約需求',
+            subject: ordering
+              ? '溪美手作｜已收到您的花生糖訂購需求'
+              : '溪美手作｜已收到您的占卜預約需求',
             text: [
-              '您的網站需求已交由郵件服務通知陳女士，請勿重複提交。', '',
-              '此信僅為收件通知，尚非正式成立的訂單或預約。',
-              '實際數量、運費、金額或預約時段，仍需店家與您聯繫確認。', '',
-              '如需確認進度，請回覆此信或致電陳女士：0909-570-015。',
+              '您好，您的需求已送出，並已交由郵件服務通知店家。',
+              '',
+              details,
+              '',
+              '此信僅為需求收件通知，尚非正式成立的訂單或預約。',
+              '實際數量、運費、金額或預約時段，仍需店家與您聯繫確認。',
+              '目前無需付款，請勿重複提交。',
+              '',
+              '如需詢問進度，請回覆此信或致電：0909-570-015。',
               '若您未提交需求，請忽略此信；您的 Email 可能由他人誤填。',
             ].join('\n'),
           });
+          customerMessageId = customerResult?.messageId ?? null;
+          console.log('Customer email accepted', {
+            requestId, version, messageId: customerMessageId,
+          });
           customerEmailSent = true;
-        } catch {
-          customerEmailSent = false;
+        } catch (error) {
+          console.error('Customer receipt email failed', {
+            requestId, version, code: error?.code ?? 'UNKNOWN',
+          });
         }
       }
-      return respond({ accepted: true, customerEmailSent });
-    } catch {
-      return respond({ error: '暫時無法確認寄送結果，請勿立即重送；請直接聯絡店家確認。' }, 502);
+
+      return respond({
+        accepted: true,
+        customerEmailSent,
+        requestId,
+        version,
+        storeMessageId,
+        customerMessageId,
+      });
+    } catch (error) {
+      console.error('Contact processing failed', {
+        requestId, version, stage, code: error?.code ?? 'UNKNOWN',
+      });
+      return respond({ error: '暫時無法確認寄送結果，請勿立即重送；請直接聯絡店家確認。', requestId, version }, 502);
     }
   },
 };

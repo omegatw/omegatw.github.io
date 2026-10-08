@@ -26,6 +26,7 @@ function loadVerification() {
       },
       'expired-callback': resetVerification,
       'error-callback': () => {
+        if (sent) return;
         resetVerification();
         status.textContent = '安全驗證無法載入，請重新開啟視窗，或直接電話／Email 聯絡店家。';
       },
@@ -54,8 +55,7 @@ function resetVerification() {
 }
 
 function setMode(nextMode) {
-  if (sending) return;
-  sent = false;
+  if (sending || sent) return;
   form.style.display = '';
   dialog.querySelector('.dialog-tabs').style.display = '';
   dialog.querySelector('.dialog-intro').hidden = false;
@@ -143,12 +143,13 @@ form.addEventListener('submit', async (event) => {
     const result = await response.json();
     if (!response.ok || result.accepted !== true) throw new Error(result.error || '送出失敗，請直接聯絡店家確認。');
     sent = true;
+    submit.hidden = true;
     form.style.display = 'none';
     dialog.querySelector('.dialog-tabs').style.display = 'none';
     dialog.querySelector('.dialog-intro').hidden = true;
-    dialog.querySelector('#dialog-title').textContent = '需求已成功送出';
+    dialog.querySelector('#dialog-title').textContent = '信件已送出';
     const emailNotice = !payload.email ? '' : result.customerEmailSent === true
-      ? '收件通知也已交由郵件服務寄送至您的 Email，請查看收件匣或垃圾郵件。'
+      ? '收件通知已交由郵件服務寄送至您的 Email，寄件地址為 no-reply@omegaai.cc。若未收到，請檢查「垃圾郵件」資料夾。'
       : '您的 Email 通知未能確認寄出，但店家通知已送出，請勿重複提交。';
     status.textContent = `需求已交由郵件服務寄送給陳女士，請勿重複提交。${emailNotice}仍需店家回覆確認，尚非正式成立的訂單或預約。`;
     form.reset();
@@ -162,6 +163,6 @@ form.addEventListener('submit', async (event) => {
     form.removeAttribute('aria-busy');
     dialog.querySelectorAll('.dialog-tab').forEach((tab) => { tab.disabled = false; });
     resetVerification();
-    if (widgetId !== undefined) window.turnstile.reset(widgetId);
+    if (widgetId !== undefined && !sent) window.turnstile.reset(widgetId);
   }
 });
