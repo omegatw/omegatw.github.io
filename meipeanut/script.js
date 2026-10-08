@@ -3,9 +3,58 @@ const form = document.querySelector('#contact-form');
 const status = document.querySelector('#form-status');
 const menu = document.querySelector('.menu-toggle');
 const nav = document.querySelector('#site-nav');
+const submit = form.querySelector('.form-submit');
 let mode = 'order';
+let sending = false;
+let sent = false;
+let verificationToken = '';
+let widgetId;
+let verificationLoading = false;
+
+function loadVerification() {
+  if (widgetId !== undefined) return;
+  if (window.turnstile) {
+    widgetId = window.turnstile.render('#contact-verification', {
+      sitekey: '0x4AAAAAAFRXQ7Z4w-19_u5S',
+      action: 'meipeanut_contact',
+      size: 'flexible',
+      callback: (token) => {
+        verificationToken = token;
+        submit.disabled = sending || sent;
+      },
+      'expired-callback': resetVerification,
+      'error-callback': () => {
+        resetVerification();
+        status.textContent = '安全驗證無法載入，請重新開啟視窗，或直接電話／Email 聯絡店家。';
+      },
+    });
+    return;
+  }
+  if (verificationLoading) return;
+  verificationLoading = true;
+  const script = document.createElement('script');
+  script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+  script.async = true;
+  script.onload = () => {
+    verificationLoading = false;
+    loadVerification();
+  };
+  script.onerror = () => {
+    verificationLoading = false;
+    status.textContent = '安全驗證無法載入，請重新開啟視窗，或直接聯絡店家。';
+  };
+  document.head.append(script);
+}
+
+function resetVerification() {
+  verificationToken = '';
+  submit.disabled = true;
+}
 
 function setMode(nextMode) {
+  if (sending) return;
+  sent = false;
+  submit.disabled = !verificationToken;
   mode = nextMode;
   dialog.querySelectorAll('.dialog-tab').forEach((tab) => {
     const active = tab.dataset.mode === mode;
@@ -25,11 +74,13 @@ function setMode(nextMode) {
 
 document.querySelectorAll('[data-open-contact]').forEach((button) => {
   button.addEventListener('click', () => {
+    if (sending) return;
     setMode(button.dataset.openContact);
     nav.classList.remove('is-open');
     menu.setAttribute('aria-expanded', 'false');
     menu.setAttribute('aria-label', '開啟選單');
     dialog.showModal();
+    loadVerification();
   });
 });
 
@@ -52,30 +103,51 @@ nav.querySelectorAll('a').forEach((link) => link.addEventListener('click', () =>
   menu.setAttribute('aria-label', '開啟選單');
 }));
 
-form.addEventListener('submit', (event) => {
+form.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (sending || sent || !form.reportValidity()) return;
+  if (!verificationToken) {
+    status.textContent = '請先完成安全驗證。';
+    return;
+  }
   const data = new FormData(form);
-  const name = String(data.get('name')).trim();
-  const phone = String(data.get('phone')).trim();
-  const email = String(data.get('email')).trim();
-  const message = String(data.get('message')).trim();
-  if (!name || !phone) return;
-
-  const subject = mode === 'order' ? `花生糖訂購詢問｜${name}` : `風谷占卜預約詢問｜${name}`;
-  const details = mode === 'order'
-    ? `預計訂購：${data.get('quantity')} 包（每包 NT$200，實際運費與金額由店家確認）`
-    : `希望預約日期：${data.get('date') || '尚未指定'}（實際時段與費用由店家確認）`;
-  const body = [
-    `您好，我想${mode === 'order' ? '詢問花生糖訂購' : '詢問風谷占卜預約'}。`,
-    '',
-    `稱呼：${name}`,
-    `聯絡電話：${phone}`,
-    `電子郵件：${email || '未提供'}`,
-    details,
-    `備註：${message || '無'}`,
-    '',
-    '此訊息為需求詢問，尚待店家回覆確認。',
-  ].join('\n');
-  status.textContent = '已開啟電子郵件程式，請在郵件程式中確認並按「寄出」。若沒有開啟，請直接聯繫下方電話或 LINE。';
-  window.location.href = `mailto:chen0909570015@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const payload = {
+    site: 'meipeanut',
+    mode,
+    name: String(data.get('name') || '').trim(),
+    phone: String(data.get('phone') || '').trim(),
+    email: String(data.get('email') || '').trim(),
+    message: String(data.get('message') || '').trim(),
+    quantity: mode === 'order' ? Number(data.get('quantity')) : null,
+    date: String(data.get('date') || ''),
+    turnstileToken: verificationToken,
+  };
+  sending = true;
+  submit.disabled = true;
+  form.setAttribute('aria-busy', 'true');
+  dialog.querySelectorAll('.dialog-tab').forEach((tab) => { tab.disabled = true; });
+  status.textContent = '正在送出需求，請勿重複提交……';
+  try {
+    const response = await fetch('https://client-to-store-mail.kmbt1og.workers.dev/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30000),
+    });
+    const result = await response.json();
+    if (!response.ok || result.accepted !== true) throw new Error(result.error || '送出失敗，請直接聯絡店家確認。');
+    sent = true;
+    status.textContent = '需求已交由郵件服務寄送給陳女士，仍需店家回覆確認，尚非正式成立的訂單或預約。';
+    form.reset();
+  } catch (error) {
+    status.textContent = error instanceof TypeError || error.name === 'TimeoutError' || error instanceof SyntaxError
+      ? '無法確認寄送結果，請勿立即重送；請電話或 Email 聯絡店家確認。'
+      : error.message;
+  } finally {
+    sending = false;
+    form.removeAttribute('aria-busy');
+    dialog.querySelectorAll('.dialog-tab').forEach((tab) => { tab.disabled = false; });
+    resetVerification();
+    if (widgetId !== undefined) window.turnstile.reset(widgetId);
+  }
 });

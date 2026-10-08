@@ -47,6 +47,8 @@ h1{font-size:clamp(46px,4.7vw,72px);line-height:1.42;letter-spacing:.035em;margi
 .button{display:inline-flex;align-items:center;justify-content:center;gap:35px;min-height:54px;padding:12px 24px;border:1px solid transparent;font-size:13px;font-weight:600;letter-spacing:.08em;transition:background .2s,transform .2s,border-color .2s,color .2s;line-height:1.4}
 .button span{font-size:19px;font-weight:400;line-height:1}
 .button:hover{transform:translateY(-3px)}
+.button:disabled{cursor:not-allowed;opacity:.6;transform:none}.dialog-tab:disabled{cursor:wait;opacity:.6}
+#contact-verification{min-height:65px;width:100%}
 .button-primary{color:#fff;background:var(--green)}
 .button-primary:hover{background:#213c2d}
 .button-dark{color:#fff;background:var(--green-deep)}
